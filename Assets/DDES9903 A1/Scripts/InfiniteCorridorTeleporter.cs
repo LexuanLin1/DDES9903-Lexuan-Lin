@@ -2,14 +2,20 @@ using UnityEngine;
 
 public sealed class InfiniteCorridorTeleporter : MonoBehaviour
 {
+    [Header("Security")]
     [SerializeField]
     private MissionSecurityController securityController;
 
+    [Header("Teleport")]
     [SerializeField]
     private Transform returnPoint;
 
     [SerializeField, Min(0.1f)]
     private float teleportCooldown = 0.75f;
+
+    [Header("Post-Teleport Narrative")]
+    [SerializeField]
+    private PostTeleportNarrativeSequence postTeleportNarrative;
 
     private float nextAllowedTeleportTime;
 
@@ -58,5 +64,10 @@ public sealed class InfiniteCorridorTeleporter : MonoBehaviour
         }
 
         securityController.RegisterCorridorLoop();
+
+        if (postTeleportNarrative != null)
+        {
+            postTeleportNarrative.PlayOnce();
+        }
     }
 }
