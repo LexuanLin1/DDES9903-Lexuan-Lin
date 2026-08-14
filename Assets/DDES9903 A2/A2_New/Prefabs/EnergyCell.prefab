@@ -15,6 +15,7 @@ GameObject:
   - component: {fileID: 8564976790292865276}
   - component: {fileID: 3249295412427912829}
   - component: {fileID: 1066908908670861337}
+  - component: {fileID: 6356018523268575689}
   m_Layer: 0
   m_Name: EnergyCell
   m_TagString: Untagged
@@ -52,9 +53,9 @@ MonoBehaviour:
   onPrimaryInteract:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 1066908908670861337}
-        m_TargetAssemblyTypeName: EnergyCellEmergencyRelay, Assembly-CSharp
-        m_MethodName: NotifyPickedUp
+      - m_Target: {fileID: 6356018523268575689}
+        m_TargetAssemblyTypeName: A2EnergyCoreReporter, Assembly-CSharp
+        m_MethodName: CollectEnergyCore
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
@@ -235,9 +236,22 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2300285127631231131}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: ad0a0cf29b24a1444be8e8ff350ee2dc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::EnergyCellEmergencyRelay
   endingController: {fileID: 0}
+--- !u!114 &6356018523268575689
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2300285127631231131}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 05ee25bce013b144788acfe5bd2f4b09, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::A2EnergyCoreReporter
+  disappearDelay: 1

@@ -27,8 +27,6 @@ public sealed class CryoSequenceController : MonoBehaviour
     [SerializeField] private AudioClip powerCriticalVoice;
     [SerializeField] private AudioClip homeBeaconVoice;
     [SerializeField] private AudioClip wakePromptVoice;
-    [SerializeField] private AudioClip wakeConfirmedVoice;
-    [SerializeField] private AudioClip cockpitInstructionVoice;
 
     [Header("Timing")]
     [SerializeField, Min(0f)]
@@ -86,8 +84,9 @@ public sealed class CryoSequenceController : MonoBehaviour
         yield return new WaitForSeconds(openingBlackDuration);
 
         SetDisplay(
-            "CRYOSLEEP SYSTEM RESTARTING",
-            new Color32(66, 210, 225, 255)
+            "EMERGENCY WAKE PROTOCOL\n\n" +
+            "CRITICAL FAILURE DETECTED",
+            new Color32(255, 72, 82, 255)
         );
 
         PlayVoice(awakeningVoice);
@@ -114,16 +113,15 @@ public sealed class CryoSequenceController : MonoBehaviour
         yield return new WaitForSeconds(messageGap);
 
         SetDisplay(
-            "MISSION OVERRUN DETECTED\n\n" +
-            "PLANNED JOURNEY: 5 YEARS\n\n" +
-            "ACTUAL ELAPSED TIME: 10 YEARS",
+            "MISSION ELAPSED TIME\n\n" +
+            "10 YEARS",
             new Color32(245, 177, 66, 255)
         );
 
         PlayVoice(timeOverrunVoice);
 
         float timeOverrunDuration =
-            GetClipDuration(timeOverrunVoice, 7f);
+            GetClipDuration(timeOverrunVoice, 3f);
 
         float secondFadeDuration =
             Mathf.Min(1.5f, timeOverrunDuration);
@@ -145,35 +143,36 @@ public sealed class CryoSequenceController : MonoBehaviour
 
         yield return StartCoroutine(
             ShowMessageAndWait(
-                "CRYOSLEEP POWER: 4%\n\n" +
-                "CONTINUED SUSPENSION UNAVAILABLE",
+                "SHIP POWER: CRITICAL\n\n" +
+                "CRYOSLEEP CANNOT CONTINUE",
                 new Color32(255, 72, 82, 255),
                 powerCriticalVoice,
-                5f
+                3f
             )
         );
 
         yield return StartCoroutine(
             ShowMessageAndWait(
-                "HOME BEACON DETECTED\n\n" +
-                "SIGNAL STATUS: WEAK\n\n" +
-                "DESTINATION: EIRENE",
+                "EARTH BEACON DETECTED\n\n" +
+                "EMERGENCY RETURN POSSIBLE",
                 new Color32(104, 225, 170, 255),
                 homeBeaconVoice,
-                5f
+                3f
             )
         );
 
         SetDisplay(
-            "MANUAL AWAKENING REQUIRED\n\n" +
-            "WAKE UP TO CONTINUE THE JOURNEY HOME",
+            "CAPTAIN - WAKE IMMEDIATELY\n\n" +
+            "MANUAL INTERVENTION REQUIRED\n\n" +
+            "EMERGENCY ENERGY CORE AVAILABLE\n\n" +
+            "RETRIEVE CORE FOR MANUAL CONTROL",
             new Color32(66, 210, 225, 255)
         );
 
         PlayVoice(wakePromptVoice);
 
         yield return new WaitForSeconds(
-            GetClipDuration(wakePromptVoice, 5f)
+            GetClipDuration(wakePromptVoice, 4f)
         );
 
         wakeChoiceAvailable = true;
@@ -187,7 +186,7 @@ public sealed class CryoSequenceController : MonoBehaviour
     public void OnWakeYesPressed()
     {
         Debug.Log(
-            $"YES pressed. Choice available: {wakeChoiceAvailable}",
+            $"Wake button pressed. Choice available: {wakeChoiceAvailable}",
             this
         );
 
@@ -204,26 +203,12 @@ public sealed class CryoSequenceController : MonoBehaviour
             wakeButtonYes.SetActive(false);
         }
 
-        StartCoroutine(ConfirmWake());
+        StartCoroutine(OpenCryoChamber());
     }
 
-    private IEnumerator ConfirmWake()
+    private IEnumerator OpenCryoChamber()
     {
-        SetDisplay(
-            "AWAKENING CONFIRMED\n\n" +
-            "HOMEWARD JOURNEY RESUMED",
-            new Color32(75, 230, 145, 255)
-        );
-
-        PlayVoice(wakeConfirmedVoice);
-
-        float confirmedDuration =
-            GetClipDuration(wakeConfirmedVoice, 6f);
-
-        float actualDoorDelay =
-            Mathf.Min(doorHideDelay, confirmedDuration);
-
-        yield return new WaitForSeconds(actualDoorDelay);
+        yield return new WaitForSeconds(doorHideDelay);
 
         if (doorToHide != null)
         {
@@ -249,20 +234,11 @@ public sealed class CryoSequenceController : MonoBehaviour
             );
         }
 
-        yield return WaitForRemainingDuration(
-            confirmedDuration,
-            actualDoorDelay
-        );
-
-        yield return new WaitForSeconds(messageGap);
-
         SetDisplay(
-            "PROCEED TO THE COCKPIT\n\n" +
-            "FURTHER MISSION INSTRUCTIONS WAITING",
+            "EMERGENCY ENERGY CORE AVAILABLE\n\n" +
+            "RETRIEVE CORE FOR MANUAL CONTROL",
             new Color32(104, 225, 170, 255)
         );
-
-        PlayVoice(cockpitInstructionVoice);
     }
 
     private IEnumerator ShowMessageAndWait(
@@ -379,7 +355,7 @@ public sealed class CryoSequenceController : MonoBehaviour
         }
 
         statusText.text = message;
-        statusText.color = Color.black;
+        statusText.color = colour;
     }
 
     [ContextMenu("TEST YES")]
