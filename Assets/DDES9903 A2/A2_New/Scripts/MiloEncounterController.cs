@@ -15,10 +15,13 @@ public sealed class MiloEncounterController : MonoBehaviour
     [SerializeField] private GameObject pathBlocker;
     [SerializeField] private Transform miloSidePoint;
 
+    [Header("MILO Destination")]
+    [SerializeField] private Transform miloNextPoint;
+
     [Header("MILO Light")]
     [SerializeField] private Light attentionLight;
 
-    [Header("Voice")]
+    [Header("Main Voice")]
     [SerializeField] private AudioSource voiceSource;
 
     [SerializeField] private AudioClip miloDetectedVoice;
@@ -26,12 +29,24 @@ public sealed class MiloEncounterController : MonoBehaviour
     [SerializeField] private AudioClip repairVoice;
     [SerializeField] private AudioClip leaveVoice;
 
+    [Header("Repair Dialogue")]
+    [SerializeField] private AudioClip captainPhotoQuestionVoice;
+    [SerializeField] private AudioClip miloMemoryDamagedVoice;
+    [SerializeField] private AudioClip captainJunctionVoice;
+    [SerializeField] private AudioClip miloDirectiveAcceptedVoice;
+
     [Header("Timing")]
     [SerializeField, Min(0.1f)]
     private float moveAsideDuration = 1.5f;
 
     [SerializeField, Min(0f)]
     private float repairDelay = 0.5f;
+
+    [SerializeField, Min(0f)]
+    private float dialogueGap = 0.25f;
+
+    [SerializeField, Min(0f)]
+    private float relocationDelay = 0.4f;
 
     private bool encounterStarted;
     private bool decisionFinished;
@@ -113,6 +128,13 @@ public sealed class MiloEncounterController : MonoBehaviour
         {
             PlayVoice(miloDetectedVoice);
 
+            yield return new WaitForSeconds(
+                GetClipDuration(
+                    miloDetectedVoice,
+                    2f
+                )
+            );
+
             if (repairInteraction != null)
             {
                 repairInteraction.SetActive(true);
@@ -126,14 +148,16 @@ public sealed class MiloEncounterController : MonoBehaviour
             yield break;
         }
 
+        decisionFinished = true;
+
         PlayVoice(noCoreVoice);
 
-        float waitDuration = GetClipDuration(
-            noCoreVoice,
-            2f
+        yield return new WaitForSeconds(
+            GetClipDuration(
+                noCoreVoice,
+                2f
+            )
         );
-
-        yield return new WaitForSeconds(waitDuration);
 
         A2NarrativeStateManager.Instance.SetMiloDecision(
             false
@@ -199,7 +223,21 @@ public sealed class MiloEncounterController : MonoBehaviour
     {
         PlayVoice(repairVoice);
 
-        yield return new WaitForSeconds(repairDelay);
+        float repairDuration =
+            GetClipDuration(
+                repairVoice,
+                1f
+            );
+
+        float actualRepairDelay =
+            Mathf.Min(
+                repairDelay,
+                repairDuration
+            );
+
+        yield return new WaitForSeconds(
+            actualRepairDelay
+        );
 
         if (miloBroken != null)
         {
@@ -220,6 +258,58 @@ public sealed class MiloEncounterController : MonoBehaviour
                 );
         }
 
+        float remainingRepairTime =
+            repairDuration - actualRepairDelay;
+
+        if (remainingRepairTime > 0f)
+        {
+            yield return new WaitForSeconds(
+                remainingRepairTime
+            );
+        }
+
+        yield return new WaitForSeconds(dialogueGap);
+
+        yield return StartCoroutine(
+            PlayVoiceAndWait(
+                captainPhotoQuestionVoice,
+                3f
+            )
+        );
+
+        yield return new WaitForSeconds(dialogueGap);
+
+        yield return StartCoroutine(
+            PlayVoiceAndWait(
+                miloMemoryDamagedVoice,
+                3f
+            )
+        );
+
+        yield return new WaitForSeconds(dialogueGap);
+
+        yield return StartCoroutine(
+            PlayVoiceAndWait(
+                captainJunctionVoice,
+                2.5f
+            )
+        );
+
+        yield return new WaitForSeconds(dialogueGap);
+
+        yield return StartCoroutine(
+            PlayVoiceAndWait(
+                miloDirectiveAcceptedVoice,
+                1.5f
+            )
+        );
+
+        yield return new WaitForSeconds(
+            relocationDelay
+        );
+
+        MoveMiloToNextPoint();
+
         FinishEncounter();
     }
 
@@ -229,17 +319,46 @@ public sealed class MiloEncounterController : MonoBehaviour
 
         float waitDuration =
             Mathf.Min(
-                GetClipDuration(leaveVoice, 1f),
+                GetClipDuration(
+                    leaveVoice,
+                    1f
+                ),
                 1.5f
             );
 
-        yield return new WaitForSeconds(waitDuration);
+        yield return new WaitForSeconds(
+            waitDuration
+        );
 
         yield return StartCoroutine(
             MoveMiloAside()
         );
 
         FinishEncounter();
+    }
+
+    private void MoveMiloToNextPoint()
+    {
+        if (miloActive == null ||
+            miloNextPoint == null)
+        {
+            Debug.LogWarning(
+                "MILO next point references are missing.",
+                this
+            );
+
+            return;
+        }
+
+        miloActive.transform.SetPositionAndRotation(
+            miloNextPoint.position,
+            miloNextPoint.rotation
+        );
+
+        Debug.Log(
+            "MILO-01 moved to the Central Junction.",
+            this
+        );
     }
 
     private IEnumerator MoveMiloAside()
@@ -250,10 +369,14 @@ public sealed class MiloEncounterController : MonoBehaviour
             yield break;
         }
 
-        Transform target = miloBroken.transform;
+        Transform target =
+            miloBroken.transform;
 
-        Vector3 startPosition = target.position;
-        Quaternion startRotation = target.rotation;
+        Vector3 startPosition =
+            target.position;
+
+        Quaternion startRotation =
+            target.rotation;
 
         Vector3 targetPosition =
             miloSidePoint.position;
@@ -269,7 +392,8 @@ public sealed class MiloEncounterController : MonoBehaviour
 
             float progress =
                 Mathf.Clamp01(
-                    elapsedTime / moveAsideDuration
+                    elapsedTime /
+                    moveAsideDuration
                 );
 
             float smoothProgress =
@@ -305,6 +429,20 @@ public sealed class MiloEncounterController : MonoBehaviour
         {
             attentionLight.intensity = 0f;
         }
+    }
+
+    private IEnumerator PlayVoiceAndWait(
+        AudioClip clip,
+        float fallbackDuration)
+    {
+        PlayVoice(clip);
+
+        yield return new WaitForSeconds(
+            GetClipDuration(
+                clip,
+                fallbackDuration
+            )
+        );
     }
 
     private void FinishEncounter()

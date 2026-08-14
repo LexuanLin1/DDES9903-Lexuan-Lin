@@ -7,6 +7,10 @@ public sealed class A2EnergyCoreReporter : MonoBehaviour
     [SerializeField, Min(0f)]
     private float disappearDelay = 1f;
 
+    [Header("System Voice")]
+    [SerializeField] private AudioSource systemVoiceSource;
+    [SerializeField] private AudioClip manualControlAuthorizedVoice;
+
     private bool collected;
 
     public void CollectEnergyCore()
@@ -30,14 +34,30 @@ public sealed class A2EnergyCoreReporter : MonoBehaviour
 
         A2NarrativeStateManager.Instance.AcceptEnergyCore();
 
+        PlaySystemVoice();
+
         Debug.Log(
             "A2: Energy Core collected by the player.",
             this
         );
 
-        StartCoroutine(
-            HideAfterDelay()
-        );
+        StartCoroutine(HideAfterDelay());
+    }
+
+    private void PlaySystemVoice()
+    {
+        if (systemVoiceSource == null ||
+            manualControlAuthorizedVoice == null)
+        {
+            return;
+        }
+
+        systemVoiceSource.Stop();
+        systemVoiceSource.clip =
+            manualControlAuthorizedVoice;
+
+        systemVoiceSource.loop = false;
+        systemVoiceSource.Play();
     }
 
     private IEnumerator HideAfterDelay()
