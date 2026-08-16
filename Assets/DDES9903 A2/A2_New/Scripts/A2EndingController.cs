@@ -21,10 +21,25 @@ public sealed class A2EndingController : MonoBehaviour
     [SerializeField] private TMP_Text endingTitleText;
     [SerializeField] private TMP_Text endingBodyText;
 
+    [Header("Fade To Black")]
+    [SerializeField] private CanvasGroup endingFadeGroup;
+
+    [SerializeField, Min(0.1f)]
+    private float fadeToBlackDuration = 1.2f;
+
+    [SerializeField, Min(0f)]
+    private float blackHoldDuration = 0.5f;
+
+    [SerializeField, Min(0.1f)]
+    private float fadeFromBlackDuration = 1.0f;
+
     [Header("Voice Sources")]
     [SerializeField] private AudioSource systemVoiceSource;
     [SerializeField] private AudioSource captainVoiceSource;
     [SerializeField] private AudioSource miloVoiceSource;
+
+    [Header("Ending Epilogue Voice Source")]
+    [SerializeField] private AudioSource endingVoiceSource;
 
     [Header("Return Ending Voices")]
     [SerializeField] private AudioClip escapeLaunchVoice;
@@ -36,6 +51,10 @@ public sealed class A2EndingController : MonoBehaviour
     [SerializeField] private AudioClip captainMiloDepartureVoice;
     [SerializeField] private AudioClip staySystemVoice;
     [SerializeField] private AudioClip captainStayVoice;
+
+    [Header("Final Epilogue Voices")]
+    [SerializeField] private AudioClip daughterHomeVoice;
+    [SerializeField] private AudioClip rescueFoundVoice;
 
     [Header("Shared Subtitles")]
     [SerializeField] private CanvasGroup subtitleGroup;
@@ -98,8 +117,7 @@ public sealed class A2EndingController : MonoBehaviour
     [TextArea(2, 5)]
     [SerializeField]
     private string returnEndingBody =
-        "After ten years, the Captain leaves the ship behind\n" +
-        "and begins the journey home.";
+        "After ten years, the Captain finally returns home.";
 
     [TextArea(2, 5)]
     [SerializeField]
@@ -115,7 +133,10 @@ public sealed class A2EndingController : MonoBehaviour
     private float miloDepartureDelay = 0.8f;
 
     [SerializeField, Min(0f)]
-    private float endingDisplayDelay = 1.5f;
+    private float preFadeDelay = 0.8f;
+
+    [SerializeField, Min(0f)]
+    private float endingRevealDelay = 0.4f;
 
     [SerializeField, Min(0f)]
     private float subtitleFadeDuration = 0.2f;
@@ -142,6 +163,13 @@ public sealed class A2EndingController : MonoBehaviour
         if (subtitleGroup != null)
         {
             subtitleGroup.alpha = 0f;
+        }
+
+        if (endingFadeGroup != null)
+        {
+            endingFadeGroup.alpha = 0f;
+            endingFadeGroup.interactable = false;
+            endingFadeGroup.blocksRaycasts = false;
         }
     }
 
@@ -251,10 +279,44 @@ public sealed class A2EndingController : MonoBehaviour
         );
 
         yield return new WaitForSeconds(
-            endingDisplayDelay
+            preFadeDelay
         );
 
+        // Fade away from the spaceship.
+        yield return StartCoroutine(
+            FadeBlack(
+                0f,
+                1f,
+                fadeToBlackDuration
+            )
+        );
+
+        yield return new WaitForSeconds(
+            blackHoldDuration
+        );
+
+        // Daughter speaks while the screen is black.
+        yield return StartCoroutine(
+            PlayEndingVoiceAndWait(
+                daughterHomeVoice
+            )
+        );
+
+        // Prepare the final image while still black.
         ShowReturnEnding();
+
+        yield return new WaitForSeconds(
+            endingRevealDelay
+        );
+
+        // Reveal the ending screen.
+        yield return StartCoroutine(
+            FadeBlack(
+                1f,
+                0f,
+                fadeFromBlackDuration
+            )
+        );
 
         endingRunning = false;
         endingComplete = true;
@@ -267,7 +329,10 @@ public sealed class A2EndingController : MonoBehaviour
 
     private IEnumerator StayEndingSequence()
     {
-        if (IsMiloRepaired())
+        bool miloRepaired =
+            IsMiloRepaired();
+
+        if (miloRepaired)
         {
             yield return StartCoroutine(
                 PlayDialogue(
@@ -325,10 +390,47 @@ public sealed class A2EndingController : MonoBehaviour
         );
 
         yield return new WaitForSeconds(
-            endingDisplayDelay
+            preFadeDelay
         );
 
+        // Fade away from the bridge.
+        yield return StartCoroutine(
+            FadeBlack(
+                0f,
+                1f,
+                fadeToBlackDuration
+            )
+        );
+
+        yield return new WaitForSeconds(
+            blackHoldDuration
+        );
+
+        // MILO's earlier repair now has a final consequence.
+        if (miloRepaired)
+        {
+            yield return StartCoroutine(
+                PlayEndingVoiceAndWait(
+                    rescueFoundVoice
+                )
+            );
+        }
+
+        // Prepare ending image while the player sees black.
         ShowStayEnding();
+
+        yield return new WaitForSeconds(
+            endingRevealDelay
+        );
+
+        // Reveal the ending.
+        yield return StartCoroutine(
+            FadeBlack(
+                1f,
+                0f,
+                fadeFromBlackDuration
+            )
+        );
 
         endingRunning = false;
         endingComplete = true;
@@ -337,6 +439,85 @@ public sealed class A2EndingController : MonoBehaviour
             "A2 ENDING COMPLETE: STAY WITH THE SHIP.",
             this
         );
+    }
+
+    private IEnumerator PlayEndingVoiceAndWait(
+        AudioClip clip)
+    {
+        if (clip == null)
+        {
+            yield return new WaitForSeconds(
+                fallbackVoiceDuration
+            );
+
+            yield break;
+        }
+
+        if (endingVoiceSource == null)
+        {
+            yield return new WaitForSeconds(
+                clip.length
+            );
+
+            yield break;
+        }
+
+        endingVoiceSource.Stop();
+        endingVoiceSource.clip = clip;
+        endingVoiceSource.loop = false;
+        endingVoiceSource.Play();
+
+        yield return new WaitForSeconds(
+            clip.length
+        );
+    }
+
+    private IEnumerator FadeBlack(
+        float startAlpha,
+        float endAlpha,
+        float duration)
+    {
+        if (endingFadeGroup == null)
+        {
+            yield break;
+        }
+
+        if (duration <= 0f)
+        {
+            endingFadeGroup.alpha =
+                endAlpha;
+
+            yield break;
+        }
+
+        float elapsedTime = 0f;
+
+        endingFadeGroup.alpha =
+            startAlpha;
+
+        while (elapsedTime < duration)
+        {
+            elapsedTime +=
+                Time.deltaTime;
+
+            float progress =
+                Mathf.Clamp01(
+                    elapsedTime /
+                    duration
+                );
+
+            endingFadeGroup.alpha =
+                Mathf.Lerp(
+                    startAlpha,
+                    endAlpha,
+                    progress
+                );
+
+            yield return null;
+        }
+
+        endingFadeGroup.alpha =
+            endAlpha;
     }
 
     private void MoveMiloToEscapePod()
@@ -516,7 +697,8 @@ public sealed class A2EndingController : MonoBehaviour
         return
             IsPlaying(systemVoiceSource) ||
             IsPlaying(captainVoiceSource) ||
-            IsPlaying(miloVoiceSource);
+            IsPlaying(miloVoiceSource) ||
+            IsPlaying(endingVoiceSource);
     }
 
     private static bool IsPlaying(
