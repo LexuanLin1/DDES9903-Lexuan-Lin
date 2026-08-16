@@ -12,22 +12,14 @@ public enum IdentityColourStage
 
 public sealed class SequentialIdentityAuthentication : MonoBehaviour
 {
-    private enum SequenceStage
-    {
-        WaitingForArrival,
-        Red,
-        Green,
-        Blue,
-        Finalising,
-        Complete
-    }
-
     [Header("Security System")]
     [SerializeField] private MissionSecurityController securityController;
     [SerializeField] private AudioSource alarmSource;
-    [SerializeField, Range(0f, 1f)] private float alarmDialogueVolume = 0.08f;
 
-    [Header("Stage Roots")]
+    [SerializeField, Range(0f, 1f)]
+    private float alarmDialogueVolume = 0.08f;
+
+    [Header("Memory Stage Roots")]
     [SerializeField] private GameObject redStageRoot;
     [SerializeField] private GameObject greenStageRoot;
     [SerializeField] private GameObject blueStageRoot;
@@ -36,6 +28,10 @@ public sealed class SequentialIdentityAuthentication : MonoBehaviour
     [SerializeField] private GameObject redCompletedVisual;
     [SerializeField] private GameObject greenCompletedVisual;
     [SerializeField] private GameObject blueCompletedVisual;
+
+    [Header("Final Decision")]
+    [SerializeField] private GameObject finalCommandRoot;
+    [SerializeField] private FinalDecisionController finalDecisionController;
 
     [Header("Display")]
     [SerializeField] private TMP_Text displayText;
@@ -58,89 +54,93 @@ public sealed class SequentialIdentityAuthentication : MonoBehaviour
     [SerializeField] private AudioClip redMemoryVoice;
     [SerializeField] private AudioClip greenMemoryVoice;
     [SerializeField] private AudioClip blueMemoryVoice;
-    [SerializeField] private AudioClip crewLogVoice;
-    [SerializeField] private AudioClip playerResponseVoice;
     [SerializeField] private AudioClip finalInstructionVoice;
 
     [Header("SFX")]
     [SerializeField] private AudioClip stageSuccessSfx;
-    [SerializeField] private AudioClip stageFailureSfx;
 
     [Header("Shared Subtitles")]
     [SerializeField] private CanvasGroup subtitleGroup;
     [SerializeField] private TMP_Text subtitleText;
 
-    [TextArea(2, 4)]
+    [TextArea(2, 5)]
     [SerializeField]
     private string arrivalRecallSubtitle =
-        "This array... right.\n" +
-        "Red for family, green for Earth, blue for crew.";
+        "Final command protocol.\n" +
+        "Three preserved records detected:\n" +
+        "Family, Earth, and Crew.";
 
-    [TextArea(2, 4)]
+    [TextArea(2, 5)]
     [SerializeField]
     private string redMemorySubtitle =
-        "Come back to Earth.\n" +
-        "The garden will be green when you return.";
+        "Dad, promise you'll come back.\n" +
+        "I'll be waiting for you.";
 
-    [TextArea(2, 4)]
+    [TextArea(2, 5)]
     [SerializeField]
     private string greenMemorySubtitle =
-        "Earth memory recovered.\n" +
-        "Green land... blue oceans... home.";
+        "Home...\n" +
+        "After ten years, it's still right there.";
 
-    [TextArea(2, 4)]
+    [TextArea(2, 5)]
     [SerializeField]
     private string blueMemorySubtitle =
-        "Crew memory recovered.\n" +
-        "Explorer profile confirmed.";
+        "Whatever happens, Captain...\n" +
+        "don't let our story disappear with this ship.";
 
-    [TextArea(2, 4)]
-    [SerializeField]
-    private string crewLogSubtitle =
-        "Emergency log.\n" +
-        "We transferred our remaining power to Pod One.\n" +
-        "One of us must make it back to Earth.";
-
-    [TextArea(2, 4)]
-    [SerializeField]
-    private string playerResponseSubtitle =
-        "They gave me their power...\n" +
-        "I won't fail them. I'll bring us home.";
-
-    [TextArea(2, 4)]
+    [TextArea(2, 5)]
     [SerializeField]
     private string finalInstructionSubtitle =
-        "Identity verified.\n" +
-        "Retrieve the energy crystal and return to the lower cryosleep bay.";
+        "Memory review complete.\n" +
+        "Final command interface unlocked.";
 
     [Header("Subtitle Colours")]
     [SerializeField] private Color playerSubtitleColour = Color.white;
     [SerializeField] private Color memorySubtitleColour = Color.white;
+
     [SerializeField]
     private Color securitySubtitleColour =
         new Color(1f, 0.75f, 0.75f, 1f);
 
     [Header("Timing")]
-    [SerializeField, Min(0f)] private float arrivalSafetyDelay = 0.3f;
-    [SerializeField, Min(0f)] private float delayBeforeVoice = 0.25f;
-    [SerializeField, Min(0f)] private float gapBetweenVoices = 0.5f;
-    [SerializeField, Min(0f)] private float subtitleFadeDuration = 0.2f;
-    [SerializeField, Min(0f)] private float subtitleExtraTime = 0.2f;
-    [SerializeField, Min(0.5f)] private float fallbackVoiceDuration = 4f;
+    [SerializeField, Min(0f)]
+    private float arrivalSafetyDelay = 0.3f;
 
-    private SequenceStage currentStage;
+    [SerializeField, Min(0f)]
+    private float delayBeforeVoice = 0.25f;
+
+    [SerializeField, Min(0f)]
+    private float finalDecisionDelay = 1f;
+
+    [SerializeField, Min(0f)]
+    private float subtitleFadeDuration = 0.2f;
+
+    [SerializeField, Min(0f)]
+    private float subtitleExtraTime = 0.2f;
+
+    [SerializeField, Min(0.5f)]
+    private float fallbackVoiceDuration = 4f;
+
     private bool sequenceStarted;
     private bool sequenceBusy;
-    private bool incorrectAttemptPlaying;
+    private bool sequenceComplete;
+
+    private bool redCompleted;
+    private bool greenCompleted;
+    private bool blueCompleted;
 
     private float originalAlarmVolume;
     private bool alarmVolumeLowered;
 
     private void Awake()
     {
-        currentStage = SequenceStage.WaitingForArrival;
         sequenceStarted = false;
         sequenceBusy = false;
+        sequenceComplete = false;
+
+        redCompleted = false;
+        greenCompleted = false;
+        blueCompleted = false;
 
         SetObjectActive(redStageRoot, false);
         SetObjectActive(greenStageRoot, false);
@@ -149,6 +149,9 @@ public sealed class SequentialIdentityAuthentication : MonoBehaviour
         SetObjectActive(redCompletedVisual, false);
         SetObjectActive(greenCompletedVisual, false);
         SetObjectActive(blueCompletedVisual, false);
+
+        // Final decision remains hidden until all memories are reviewed.
+        SetObjectActive(finalCommandRoot, false);
 
         if (subtitleGroup != null)
         {
@@ -160,8 +163,8 @@ public sealed class SequentialIdentityAuthentication : MonoBehaviour
         HideMemoryPhoto();
 
         SetDisplay(
-            "IDENTITY CALIBRATION ARRAY\n\n" +
-            "CREW RECORD UNAVAILABLE"
+            "FINAL COMMAND ARCHIVE\n\n" +
+            "AWAITING CAPTAIN"
         );
     }
 
@@ -173,67 +176,83 @@ public sealed class SequentialIdentityAuthentication : MonoBehaviour
         }
 
         sequenceStarted = true;
-        StartCoroutine(BeginArrivalSequence());
+
+        StartCoroutine(
+            BeginArrivalSequence()
+        );
     }
 
-    public bool CanValidateStage(IdentityColourStage colourStage)
+    public bool CanValidateStage(
+        IdentityColourStage colourStage)
     {
-        if (sequenceBusy)
+        if (!sequenceStarted ||
+            sequenceBusy ||
+            sequenceComplete)
         {
             return false;
         }
 
         return colourStage switch
         {
-            IdentityColourStage.Red => currentStage == SequenceStage.Red,
-            IdentityColourStage.Green => currentStage == SequenceStage.Green,
-            IdentityColourStage.Blue => currentStage == SequenceStage.Blue,
+            IdentityColourStage.Red => !redCompleted,
+            IdentityColourStage.Green => !greenCompleted,
+            IdentityColourStage.Blue => !blueCompleted,
             _ => false
         };
     }
 
     public void ReportRedCorrect()
     {
-        if (!CanValidateStage(IdentityColourStage.Red))
+        if (!CanValidateStage(
+            IdentityColourStage.Red))
         {
             return;
         }
 
-        StartCoroutine(CompleteRedStage());
+        StartCoroutine(
+            CompleteRedStage()
+        );
     }
 
     public void ReportGreenCorrect()
     {
-        if (!CanValidateStage(IdentityColourStage.Green))
+        if (!CanValidateStage(
+            IdentityColourStage.Green))
         {
             return;
         }
 
-        StartCoroutine(CompleteGreenStage());
+        StartCoroutine(
+            CompleteGreenStage()
+        );
     }
 
     public void ReportBlueCorrect()
     {
-        if (!CanValidateStage(IdentityColourStage.Blue))
+        if (!CanValidateStage(
+            IdentityColourStage.Blue))
         {
             return;
         }
 
-        StartCoroutine(CompleteBlueStage());
+        StartCoroutine(
+            CompleteBlueStage()
+        );
     }
 
     public void ReportIncorrectAttempt()
     {
-        if (sequenceBusy ||
-            incorrectAttemptPlaying ||
-            currentStage == SequenceStage.WaitingForArrival ||
-            currentStage == SequenceStage.Finalising ||
-            currentStage == SequenceStage.Complete)
+        if (!sequenceStarted ||
+            sequenceBusy ||
+            sequenceComplete)
         {
             return;
         }
 
-        StartCoroutine(IncorrectAttemptSequence());
+        SetDisplay(
+            "MEMORY RECORD ALREADY REVIEWED\n\n" +
+            "SELECT ANOTHER RECORD"
+        );
     }
 
     private IEnumerator BeginArrivalSequence()
@@ -242,26 +261,44 @@ public sealed class SequentialIdentityAuthentication : MonoBehaviour
 
         LowerAlarmVolume();
 
-        yield return StartCoroutine(WaitForDialogueSourcesToFinish());
-        yield return new WaitForSeconds(arrivalSafetyDelay);
+        yield return StartCoroutine(
+            WaitForDialogueSourcesToFinish()
+        );
+
+        yield return new WaitForSeconds(
+            arrivalSafetyDelay
+        );
 
         SetDisplay(
-            "MEMORY ANCHOR 01\n\n" +
-            "FAMILY\n\n" +
-            "AWAITING INPUT"
+            "FINAL COMMAND PROTOCOL\n\n" +
+            "3 PRESERVED RECORDS DETECTED\n\n" +
+            "FAMILY   EARTH   CREW"
         );
 
         yield return StartCoroutine(
             PlayDialogue(
-                playerVoiceSource,
+                securityVoiceSource,
                 arrivalRecallVoice,
                 arrivalRecallSubtitle,
-                playerSubtitleColour
+                securitySubtitleColour
             )
         );
 
-        currentStage = SequenceStage.Red;
-        SetObjectActive(redStageRoot, true);
+        // All three memories are available in any order.
+        SetObjectActive(
+            redStageRoot,
+            true
+        );
+
+        SetObjectActive(
+            greenStageRoot,
+            true
+        );
+
+        SetObjectActive(
+            blueStageRoot,
+            true
+        );
 
         sequenceBusy = false;
     }
@@ -270,19 +307,36 @@ public sealed class SequentialIdentityAuthentication : MonoBehaviour
     {
         sequenceBusy = true;
 
-        SetObjectActive(redStageRoot, false);
-        yield return StartCoroutine(PlaySfxAndWait(stageSuccessSfx));
-
-        SetObjectActive(redCompletedVisual, true);
-
-        SetDisplay(
-            "MEMORY ANCHOR 01 CONFIRMED\n\n" +
-            "FAMILY MEMORY RESTORED"
+        SetObjectActive(
+            redStageRoot,
+            false
         );
 
-        ShowMemoryPhoto(redMemoryPhoto);
+        yield return StartCoroutine(
+            PlaySfxAndWait(
+                stageSuccessSfx
+            )
+        );
 
-        yield return new WaitForSeconds(delayBeforeVoice);
+        redCompleted = true;
+
+        SetObjectActive(
+            redCompletedVisual,
+            true
+        );
+
+        SetDisplay(
+            "FAMILY RECORD REVIEWED\n\n" +
+            GetProgressText()
+        );
+
+        ShowMemoryPhoto(
+            redMemoryPhoto
+        );
+
+        yield return new WaitForSeconds(
+            delayBeforeVoice
+        );
 
         yield return StartCoroutine(
             PlayDialogue(
@@ -295,15 +349,9 @@ public sealed class SequentialIdentityAuthentication : MonoBehaviour
 
         HideMemoryPhoto();
 
-        currentStage = SequenceStage.Green;
-
-        SetDisplay(
-            "MEMORY ANCHOR 02\n\n" +
-            "EARTH\n\n" +
-            "AWAITING INPUT"
+        yield return StartCoroutine(
+            CheckForCompletion()
         );
-
-        SetObjectActive(greenStageRoot, true);
 
         sequenceBusy = false;
     }
@@ -312,40 +360,51 @@ public sealed class SequentialIdentityAuthentication : MonoBehaviour
     {
         sequenceBusy = true;
 
-        SetObjectActive(greenStageRoot, false);
-        yield return StartCoroutine(PlaySfxAndWait(stageSuccessSfx));
-
-        SetObjectActive(greenCompletedVisual, true);
-
-        SetDisplay(
-            "MEMORY ANCHOR 02 CONFIRMED\n\n" +
-            "EARTH MEMORY RESTORED"
+        SetObjectActive(
+            greenStageRoot,
+            false
         );
 
-        ShowMemoryPhoto(greenMemoryPhoto);
+        yield return StartCoroutine(
+            PlaySfxAndWait(
+                stageSuccessSfx
+            )
+        );
 
-        yield return new WaitForSeconds(delayBeforeVoice);
+        greenCompleted = true;
+
+        SetObjectActive(
+            greenCompletedVisual,
+            true
+        );
+
+        SetDisplay(
+            "EARTH RECORD REVIEWED\n\n" +
+            GetProgressText()
+        );
+
+        ShowMemoryPhoto(
+            greenMemoryPhoto
+        );
+
+        yield return new WaitForSeconds(
+            delayBeforeVoice
+        );
 
         yield return StartCoroutine(
             PlayDialogue(
-                memoryVoiceSource,
+                playerVoiceSource,
                 greenMemoryVoice,
                 greenMemorySubtitle,
-                memorySubtitleColour
+                playerSubtitleColour
             )
         );
 
         HideMemoryPhoto();
 
-        currentStage = SequenceStage.Blue;
-
-        SetDisplay(
-            "MEMORY ANCHOR 03\n\n" +
-            "CREW\n\n" +
-            "AWAITING INPUT"
+        yield return StartCoroutine(
+            CheckForCompletion()
         );
-
-        SetObjectActive(blueStageRoot, true);
 
         sequenceBusy = false;
     }
@@ -353,21 +412,37 @@ public sealed class SequentialIdentityAuthentication : MonoBehaviour
     private IEnumerator CompleteBlueStage()
     {
         sequenceBusy = true;
-        currentStage = SequenceStage.Finalising;
 
-        SetObjectActive(blueStageRoot, false);
-        yield return StartCoroutine(PlaySfxAndWait(stageSuccessSfx));
-
-        SetObjectActive(blueCompletedVisual, true);
-
-        SetDisplay(
-            "MEMORY ANCHOR 03 CONFIRMED\n\n" +
-            "CREW MEMORY RESTORED"
+        SetObjectActive(
+            blueStageRoot,
+            false
         );
 
-        ShowMemoryPhoto(blueMemoryPhoto);
+        yield return StartCoroutine(
+            PlaySfxAndWait(
+                stageSuccessSfx
+            )
+        );
 
-        yield return new WaitForSeconds(delayBeforeVoice);
+        blueCompleted = true;
+
+        SetObjectActive(
+            blueCompletedVisual,
+            true
+        );
+
+        SetDisplay(
+            "CREW RECORD REVIEWED\n\n" +
+            GetProgressText()
+        );
+
+        ShowMemoryPhoto(
+            blueMemoryPhoto
+        );
+
+        yield return new WaitForSeconds(
+            delayBeforeVoice
+        );
 
         yield return StartCoroutine(
             PlayDialogue(
@@ -378,37 +453,59 @@ public sealed class SequentialIdentityAuthentication : MonoBehaviour
             )
         );
 
-        yield return new WaitForSeconds(gapBetweenVoices);
-
-        yield return StartCoroutine(
-            PlayDialogue(
-                memoryVoiceSource,
-                crewLogVoice,
-                crewLogSubtitle,
-                memorySubtitleColour
-            )
-        );
-
-        yield return new WaitForSeconds(gapBetweenVoices);
-
-        yield return StartCoroutine(
-            PlayDialogue(
-                playerVoiceSource,
-                playerResponseVoice,
-                playerResponseSubtitle,
-                playerSubtitleColour
-            )
-        );
-
         HideMemoryPhoto();
 
-        SetDisplay(
-            "IDENTITY VERIFIED\n\n" +
-            "OBJECTIVE: RETRIEVE ENERGY CRYSTAL"
+        yield return StartCoroutine(
+            CheckForCompletion()
         );
 
+        sequenceBusy = false;
+    }
+
+    private IEnumerator CheckForCompletion()
+    {
+        if (!redCompleted ||
+            !greenCompleted ||
+            !blueCompleted)
+        {
+            SetDisplay(
+                "FINAL COMMAND ARCHIVE\n\n" +
+                GetProgressText() +
+                "\n\nREVIEW REMAINING RECORDS"
+            );
+
+            yield break;
+        }
+
+        yield return StartCoroutine(
+            FinaliseSequence()
+        );
+    }
+
+    private IEnumerator FinaliseSequence()
+    {
+        if (sequenceComplete)
+        {
+            yield break;
+        }
+
+        sequenceComplete = true;
+
+        SetDisplay(
+            "MEMORY REVIEW COMPLETE\n\n" +
+            "FINAL COMMAND ACCESS RESTORED"
+        );
+
+        // Stop / complete the old security alarm system.
         CompleteSecurityAuthentication();
 
+        // Make the final decision objects available.
+        SetObjectActive(
+            finalCommandRoot,
+            true
+        );
+
+        // Final archive confirmation.
         yield return StartCoroutine(
             PlayDialogue(
                 securityVoiceSource,
@@ -418,28 +515,45 @@ public sealed class SequentialIdentityAuthentication : MonoBehaviour
             )
         );
 
-        currentStage = SequenceStage.Complete;
-        sequenceBusy = false;
-    }
-
-    private IEnumerator IncorrectAttemptSequence()
-    {
-        incorrectAttemptPlaying = true;
-        sequenceBusy = true;
-
-        SetDisplay(
-            "MEMORY PATTERN MISMATCH\n\n" +
-            "RECALIBRATION REQUIRED"
+        // Small pause before beginning the final decision.
+        yield return new WaitForSeconds(
+            finalDecisionDelay
         );
 
-        yield return StartCoroutine(PlaySfxAndWait(stageFailureSfx));
+        StartFinalDecision();
 
-        yield return new WaitForSeconds(0.25f);
+        Debug.Log(
+            "A2: Memory review completed. Final decision sequence started.",
+            this
+        );
+    }
 
-        RestoreCurrentStageDisplay();
+    private void StartFinalDecision()
+    {
+        FinalDecisionController controller =
+            finalDecisionController;
 
-        sequenceBusy = false;
-        incorrectAttemptPlaying = false;
+        // Fallback: automatically find the controller
+        // on FinalCommandRoot if it was not manually assigned.
+        if (controller == null &&
+            finalCommandRoot != null)
+        {
+            controller =
+                finalCommandRoot
+                    .GetComponent<FinalDecisionController>();
+        }
+
+        if (controller == null)
+        {
+            Debug.LogError(
+                "FinalDecisionController was not found.",
+                this
+            );
+
+            return;
+        }
+
+        controller.BeginFinalDecision();
     }
 
     private IEnumerator PlayDialogue(
@@ -448,7 +562,9 @@ public sealed class SequentialIdentityAuthentication : MonoBehaviour
         string message,
         Color subtitleColour)
     {
-        yield return StartCoroutine(WaitForDialogueSourcesToFinish());
+        yield return StartCoroutine(
+            WaitForDialogueSourcesToFinish()
+        );
 
         if (subtitleText != null)
         {
@@ -456,9 +572,15 @@ public sealed class SequentialIdentityAuthentication : MonoBehaviour
             subtitleText.color = subtitleColour;
         }
 
-        yield return StartCoroutine(FadeSubtitle(0f, 1f));
+        yield return StartCoroutine(
+            FadeSubtitle(
+                0f,
+                1f
+            )
+        );
 
-        if (source != null && clip != null)
+        if (source != null &&
+            clip != null)
         {
             source.Stop();
             source.clip = clip;
@@ -466,11 +588,22 @@ public sealed class SequentialIdentityAuthentication : MonoBehaviour
             source.Play();
         }
 
-        float duration = GetClipDuration(clip);
+        float duration =
+            GetClipDuration(
+                clip
+            );
 
-        yield return new WaitForSeconds(duration + subtitleExtraTime);
+        yield return new WaitForSeconds(
+            duration +
+            subtitleExtraTime
+        );
 
-        yield return StartCoroutine(FadeSubtitle(1f, 0f));
+        yield return StartCoroutine(
+            FadeSubtitle(
+                1f,
+                0f
+            )
+        );
     }
 
     private IEnumerator WaitForDialogueSourcesToFinish()
@@ -483,19 +616,25 @@ public sealed class SequentialIdentityAuthentication : MonoBehaviour
 
     private bool IsAnyDialogueSourcePlaying()
     {
-        return IsPlaying(securityVoiceSource) ||
-               IsPlaying(memoryVoiceSource) ||
-               IsPlaying(playerVoiceSource);
+        return
+            IsPlaying(securityVoiceSource) ||
+            IsPlaying(memoryVoiceSource) ||
+            IsPlaying(playerVoiceSource);
     }
 
-    private static bool IsPlaying(AudioSource source)
+    private static bool IsPlaying(
+        AudioSource source)
     {
-        return source != null && source.isPlaying;
+        return
+            source != null &&
+            source.isPlaying;
     }
 
-    private IEnumerator PlaySfxAndWait(AudioClip clip)
+    private IEnumerator PlaySfxAndWait(
+        AudioClip clip)
     {
-        if (sfxSource == null || clip == null)
+        if (sfxSource == null ||
+            clip == null)
         {
             yield break;
         }
@@ -505,10 +644,14 @@ public sealed class SequentialIdentityAuthentication : MonoBehaviour
         sfxSource.loop = false;
         sfxSource.Play();
 
-        yield return new WaitForSeconds(clip.length);
+        yield return new WaitForSeconds(
+            clip.length
+        );
     }
 
-    private IEnumerator FadeSubtitle(float startAlpha, float endAlpha)
+    private IEnumerator FadeSubtitle(
+        float startAlpha,
+        float endAlpha)
     {
         if (subtitleGroup == null)
         {
@@ -517,34 +660,48 @@ public sealed class SequentialIdentityAuthentication : MonoBehaviour
 
         if (subtitleFadeDuration <= 0f)
         {
-            subtitleGroup.alpha = endAlpha;
+            subtitleGroup.alpha =
+                endAlpha;
+
             yield break;
         }
 
         float elapsedTime = 0f;
-        subtitleGroup.alpha = startAlpha;
 
-        while (elapsedTime < subtitleFadeDuration)
+        subtitleGroup.alpha =
+            startAlpha;
+
+        while (elapsedTime <
+               subtitleFadeDuration)
         {
-            elapsedTime += Time.deltaTime;
+            elapsedTime +=
+                Time.deltaTime;
 
-            float progress = Mathf.Clamp01(elapsedTime / subtitleFadeDuration);
+            float progress =
+                Mathf.Clamp01(
+                    elapsedTime /
+                    subtitleFadeDuration
+                );
 
-            subtitleGroup.alpha = Mathf.Lerp(
-                startAlpha,
-                endAlpha,
-                progress
-            );
+            subtitleGroup.alpha =
+                Mathf.Lerp(
+                    startAlpha,
+                    endAlpha,
+                    progress
+                );
 
             yield return null;
         }
 
-        subtitleGroup.alpha = endAlpha;
+        subtitleGroup.alpha =
+            endAlpha;
     }
 
-    private float GetClipDuration(AudioClip clip)
+    private float GetClipDuration(
+        AudioClip clip)
     {
-        if (clip != null && clip.length > 0f)
+        if (clip != null &&
+            clip.length > 0f)
         {
             return clip.length;
         }
@@ -552,15 +709,19 @@ public sealed class SequentialIdentityAuthentication : MonoBehaviour
         return fallbackVoiceDuration;
     }
 
-    private void ShowMemoryPhoto(Sprite sprite)
+    private void ShowMemoryPhoto(
+        Sprite sprite)
     {
         if (memoryPhotoImage == null)
         {
             return;
         }
 
-        memoryPhotoImage.sprite = sprite;
-        memoryPhotoImage.enabled = sprite != null;
+        memoryPhotoImage.sprite =
+            sprite;
+
+        memoryPhotoImage.enabled =
+            sprite != null;
     }
 
     private void HideMemoryPhoto()
@@ -570,22 +731,53 @@ public sealed class SequentialIdentityAuthentication : MonoBehaviour
             return;
         }
 
-        memoryPhotoImage.sprite = null;
-        memoryPhotoImage.enabled = false;
+        memoryPhotoImage.sprite =
+            null;
+
+        memoryPhotoImage.enabled =
+            false;
+    }
+
+    private string GetProgressText()
+    {
+        int completed = 0;
+
+        if (redCompleted)
+        {
+            completed++;
+        }
+
+        if (greenCompleted)
+        {
+            completed++;
+        }
+
+        if (blueCompleted)
+        {
+            completed++;
+        }
+
+        return
+            "RECORDS REVIEWED: " +
+            completed +
+            " / 3";
     }
 
     private void CompleteSecurityAuthentication()
     {
-        if (alarmSource != null && alarmVolumeLowered)
+        if (alarmSource != null &&
+            alarmVolumeLowered)
         {
-            alarmSource.volume = originalAlarmVolume;
+            alarmSource.volume =
+                originalAlarmVolume;
         }
 
         alarmVolumeLowered = false;
 
         if (securityController != null)
         {
-            securityController.CompleteAuthentication();
+            securityController
+                .CompleteAuthentication();
         }
         else if (alarmSource != null)
         {
@@ -595,70 +787,58 @@ public sealed class SequentialIdentityAuthentication : MonoBehaviour
 
     private void LowerAlarmVolume()
     {
-        if (alarmSource == null || alarmVolumeLowered)
+        if (alarmSource == null ||
+            alarmVolumeLowered)
         {
             return;
         }
 
-        originalAlarmVolume = alarmSource.volume;
-        alarmSource.volume = Mathf.Min(originalAlarmVolume, alarmDialogueVolume);
+        originalAlarmVolume =
+            alarmSource.volume;
+
+        alarmSource.volume =
+            Mathf.Min(
+                originalAlarmVolume,
+                alarmDialogueVolume
+            );
+
         alarmVolumeLowered = true;
     }
 
-    private void RestoreCurrentStageDisplay()
-    {
-        switch (currentStage)
-        {
-            case SequenceStage.Red:
-                SetDisplay(
-                    "MEMORY ANCHOR 01\n\n" +
-                    "FAMILY\n\n" +
-                    "AWAITING INPUT"
-                );
-                break;
-
-            case SequenceStage.Green:
-                SetDisplay(
-                    "MEMORY ANCHOR 02\n\n" +
-                    "EARTH\n\n" +
-                    "AWAITING INPUT"
-                );
-                break;
-
-            case SequenceStage.Blue:
-                SetDisplay(
-                    "MEMORY ANCHOR 03\n\n" +
-                    "CREW\n\n" +
-                    "AWAITING INPUT"
-                );
-                break;
-        }
-    }
-
-    private void SetDisplay(string message)
+    private void SetDisplay(
+        string message)
     {
         if (displayText == null)
         {
             return;
         }
 
-        displayText.text = message;
-        displayText.color = displayTextColour;
+        displayText.text =
+            message;
+
+        displayText.color =
+            displayTextColour;
     }
 
-    private static void SetObjectActive(GameObject target, bool active)
+    private static void SetObjectActive(
+        GameObject target,
+        bool active)
     {
         if (target != null)
         {
-            target.SetActive(active);
+            target.SetActive(
+                active
+            );
         }
     }
 
     private void OnDisable()
     {
-        if (alarmSource != null && alarmVolumeLowered)
+        if (alarmSource != null &&
+            alarmVolumeLowered)
         {
-            alarmSource.volume = originalAlarmVolume;
+            alarmSource.volume =
+                originalAlarmVolume;
         }
     }
 }

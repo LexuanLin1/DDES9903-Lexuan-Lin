@@ -1,50 +1,75 @@
 using System.Collections;
 using TMPro;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 public sealed class PostTeleportNarrativeSequence : MonoBehaviour
 {
-    [Header("Security Voice")]
-    [SerializeField] private AudioSource securityVoiceSource;
-    [SerializeField] private AudioClip securityVoiceClip;
+    [Header("System Voice")]
+    [FormerlySerializedAs("securityVoiceSource")]
+    [SerializeField] private AudioSource systemVoiceSource;
 
+    [FormerlySerializedAs("securityVoiceClip")]
+    [SerializeField] private AudioClip systemVoiceClip;
+
+    [FormerlySerializedAs("securitySubtitle")]
+    [TextArea(3, 7)]
+    [SerializeField]
+    private string systemSubtitle =
+        "Escape pod launch authorization incomplete.\n" +
+        "Main power is nearly exhausted.\n" +
+        "Orbital stability is failing.\n" +
+        "Captain, proceed to the bridge and make your final decision.";
+
+    [Header("Captain Voice")]
+    [FormerlySerializedAs("playerVoiceSource")]
+    [SerializeField] private AudioSource captainVoiceSource;
+
+    [FormerlySerializedAs("playerVoiceClip")]
+    [SerializeField] private AudioClip captainVoiceClip;
+
+    [FormerlySerializedAs("playerSubtitle")]
     [TextArea(2, 5)]
     [SerializeField]
-    private string securitySubtitle =
-        "Unauthorized biological presence confirmed.\n" +
-        "Crew authorization records have expired.\n" +
-        "Security containment remains active.\n" +
-        "Manual identity verification required.";
-
-    [Header("Player Voice")]
-    [SerializeField] private AudioSource playerVoiceSource;
-    [SerializeField] private AudioClip playerVoiceClip;
-
-    [TextArea(2, 5)]
-    [SerializeField]
-    private string playerSubtitle =
-        "The observation deck is behind the elevator.\n" +
-        "If the old verification terminal still works,\n" +
-        "I can restore my crew authorization there.";
+    private string captainSubtitle =
+        "The bridge... right.\n" +
+        "I need to decide what happens to the last of our power.";
 
     [Header("Shared Subtitles")]
     [SerializeField] private CanvasGroup subtitleGroup;
     [SerializeField] private TMP_Text subtitleText;
+
+    [FormerlySerializedAs("securitySubtitleColour")]
     [SerializeField]
-    private Color securitySubtitleColour =
+    private Color systemSubtitleColour =
         new Color(1f, 0.65f, 0.65f, 1f);
-    [SerializeField] private Color playerSubtitleColour = Color.white;
+
+    [FormerlySerializedAs("playerSubtitleColour")]
+    [SerializeField]
+    private Color captainSubtitleColour =
+        Color.white;
 
     [Header("Alarm")]
     [SerializeField] private AudioSource alarmSource;
-    [SerializeField, Range(0f, 1f)] private float alarmDialogueVolume = 0.12f;
+
+    [SerializeField, Range(0f, 1f)]
+    private float alarmDialogueVolume = 0.12f;
 
     [Header("Timing")]
-    [SerializeField, Min(0f)] private float delayAfterTeleport = 0.6f;
-    [SerializeField, Min(0f)] private float gapBetweenVoices = 0.4f;
-    [SerializeField, Min(0f)] private float subtitleFadeDuration = 0.2f;
-    [SerializeField, Min(0f)] private float subtitleExtraTime = 0.2f;
-    [SerializeField, Min(0.5f)] private float fallbackVoiceDuration = 4f;
+    [SerializeField, Min(0f)]
+    private float delayAfterTeleport = 0.6f;
+
+    [SerializeField, Min(0f)]
+    private float gapBetweenVoices = 0.8f;
+
+    [SerializeField, Min(0f)]
+    private float subtitleFadeDuration = 0.2f;
+
+    [SerializeField, Min(0f)]
+    private float subtitleExtraTime = 0.2f;
+
+    [SerializeField, Min(0.5f)]
+    private float fallbackVoiceDuration = 4f;
 
     private bool hasPlayed;
     private float originalAlarmVolume;
@@ -57,36 +82,50 @@ public sealed class PostTeleportNarrativeSequence : MonoBehaviour
         }
 
         hasPlayed = true;
-        StartCoroutine(RunSequence());
+
+        StartCoroutine(
+            RunSequence()
+        );
     }
 
     private IEnumerator RunSequence()
     {
         LowerAlarmVolume();
 
-        yield return new WaitForSeconds(delayAfterTeleport);
+        yield return new WaitForSeconds(
+            delayAfterTeleport
+        );
 
+        // Ship system warning.
         yield return StartCoroutine(
             PlayDialogue(
-                securityVoiceSource,
-                securityVoiceClip,
-                securitySubtitle,
-                securitySubtitleColour
+                systemVoiceSource,
+                systemVoiceClip,
+                systemSubtitle,
+                systemSubtitleColour
             )
         );
 
-        yield return new WaitForSeconds(gapBetweenVoices);
+        yield return new WaitForSeconds(
+            gapBetweenVoices
+        );
 
+        // Captain reflects on the final decision.
         yield return StartCoroutine(
             PlayDialogue(
-                playerVoiceSource,
-                playerVoiceClip,
-                playerSubtitle,
-                playerSubtitleColour
+                captainVoiceSource,
+                captainVoiceClip,
+                captainSubtitle,
+                captainSubtitleColour
             )
         );
 
         RestoreAlarmVolume();
+
+        Debug.Log(
+            "A2: Escape pod rejection narrative completed.",
+            this
+        );
     }
 
     private IEnumerator PlayDialogue(
@@ -101,9 +140,12 @@ public sealed class PostTeleportNarrativeSequence : MonoBehaviour
             subtitleText.color = subtitleColour;
         }
 
-        yield return StartCoroutine(FadeSubtitle(0f, 1f));
+        yield return StartCoroutine(
+            FadeSubtitle(0f, 1f)
+        );
 
-        if (voiceSource != null && voiceClip != null)
+        if (voiceSource != null &&
+            voiceClip != null)
         {
             voiceSource.Stop();
             voiceSource.clip = voiceClip;
@@ -112,7 +154,8 @@ public sealed class PostTeleportNarrativeSequence : MonoBehaviour
         }
 
         float voiceDuration =
-            voiceClip != null && voiceClip.length > 0f
+            voiceClip != null &&
+            voiceClip.length > 0f
                 ? voiceClip.length
                 : fallbackVoiceDuration;
 
@@ -120,7 +163,9 @@ public sealed class PostTeleportNarrativeSequence : MonoBehaviour
             voiceDuration + subtitleExtraTime
         );
 
-        yield return StartCoroutine(FadeSubtitle(1f, 0f));
+        yield return StartCoroutine(
+            FadeSubtitle(1f, 0f)
+        );
     }
 
     private IEnumerator FadeSubtitle(
@@ -139,26 +184,33 @@ public sealed class PostTeleportNarrativeSequence : MonoBehaviour
         }
 
         float elapsedTime = 0f;
-        subtitleGroup.alpha = startAlpha;
 
-        while (elapsedTime < subtitleFadeDuration)
+        subtitleGroup.alpha =
+            startAlpha;
+
+        while (elapsedTime <
+               subtitleFadeDuration)
         {
             elapsedTime += Time.deltaTime;
 
-            float progress = Mathf.Clamp01(
-                elapsedTime / subtitleFadeDuration
-            );
+            float progress =
+                Mathf.Clamp01(
+                    elapsedTime /
+                    subtitleFadeDuration
+                );
 
-            subtitleGroup.alpha = Mathf.Lerp(
-                startAlpha,
-                endAlpha,
-                progress
-            );
+            subtitleGroup.alpha =
+                Mathf.Lerp(
+                    startAlpha,
+                    endAlpha,
+                    progress
+                );
 
             yield return null;
         }
 
-        subtitleGroup.alpha = endAlpha;
+        subtitleGroup.alpha =
+            endAlpha;
     }
 
     private void LowerAlarmVolume()
@@ -168,18 +220,22 @@ public sealed class PostTeleportNarrativeSequence : MonoBehaviour
             return;
         }
 
-        originalAlarmVolume = alarmSource.volume;
-        alarmSource.volume = Mathf.Min(
-            originalAlarmVolume,
-            alarmDialogueVolume
-        );
+        originalAlarmVolume =
+            alarmSource.volume;
+
+        alarmSource.volume =
+            Mathf.Min(
+                originalAlarmVolume,
+                alarmDialogueVolume
+            );
     }
 
     private void RestoreAlarmVolume()
     {
         if (alarmSource != null)
         {
-            alarmSource.volume = originalAlarmVolume;
+            alarmSource.volume =
+                originalAlarmVolume;
         }
     }
 

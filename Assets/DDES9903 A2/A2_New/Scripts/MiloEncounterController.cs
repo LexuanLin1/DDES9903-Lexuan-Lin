@@ -3,28 +3,21 @@ using UnityEngine;
 
 public sealed class MiloEncounterController : MonoBehaviour
 {
-    [Header("MILO States")]
+    [Header("MILO Models")]
     [SerializeField] private GameObject miloBroken;
     [SerializeField] private GameObject miloActive;
 
-    [Header("Player Choices")]
+    [Header("Interactions")]
     [SerializeField] private GameObject repairInteraction;
     [SerializeField] private GameObject leaveInteraction;
 
     [Header("Path")]
     [SerializeField] private GameObject pathBlocker;
-    [SerializeField] private Transform miloSidePoint;
-
-    [Header("MILO Destination")]
     [SerializeField] private Transform miloNextPoint;
-
-    [Header("MILO Light")]
-    [SerializeField] private Light attentionLight;
 
     [Header("Main Voice")]
     [SerializeField] private AudioSource voiceSource;
-
-    [SerializeField] private AudioClip miloDetectedVoice;
+    [SerializeField] private AudioClip detectedVoice;
     [SerializeField] private AudioClip noCoreVoice;
     [SerializeField] private AudioClip repairVoice;
     [SerializeField] private AudioClip leaveVoice;
@@ -36,59 +29,26 @@ public sealed class MiloEncounterController : MonoBehaviour
     [SerializeField] private AudioClip miloDirectiveAcceptedVoice;
 
     [Header("Timing")]
-    [SerializeField, Min(0.1f)]
-    private float moveAsideDuration = 1.5f;
+    [SerializeField, Min(0f)] private float repairDelay = 0.5f;
+    [SerializeField, Min(0f)] private float dialogueGap = 0.25f;
+    [SerializeField, Min(0f)] private float relocationDelay = 0.4f;
 
-    [SerializeField, Min(0f)]
-    private float repairDelay = 0.5f;
+    private bool encounterRunning;
+    private bool miloPermanentlyRepaired;
 
-    [SerializeField, Min(0f)]
-    private float dialogueGap = 0.25f;
-
-    [SerializeField, Min(0f)]
-    private float relocationDelay = 0.4f;
-
-    private bool encounterStarted;
-    private bool decisionFinished;
-
-    private void Awake()
+    private void Start()
     {
-        encounterStarted = false;
-        decisionFinished = false;
+        HideChoices();
 
-        if (miloBroken != null)
+        if (A2NarrativeStateManager.Instance != null)
         {
-            miloBroken.SetActive(true);
-        }
-
-        if (miloActive != null)
-        {
-            miloActive.SetActive(false);
-        }
-
-        if (repairInteraction != null)
-        {
-            repairInteraction.SetActive(false);
-        }
-
-        if (leaveInteraction != null)
-        {
-            leaveInteraction.SetActive(false);
-        }
-
-        if (pathBlocker != null)
-        {
-            pathBlocker.SetActive(true);
+            miloPermanentlyRepaired =
+                A2NarrativeStateManager.Instance.MiloRepaired;
         }
     }
 
     private void OnTriggerEnter(Collider other)
     {
-        if (encounterStarted)
-        {
-            return;
-        }
-
         CharacterController player =
             other.GetComponentInParent<CharacterController>();
 
@@ -97,9 +57,7 @@ public sealed class MiloEncounterController : MonoBehaviour
             Transform root = other.transform.root;
 
             player =
-                root.GetComponentInChildren<CharacterController>(
-                    true
-                );
+                root.GetComponentInChildren<CharacterController>(true);
         }
 
         if (player == null)
@@ -107,13 +65,21 @@ public sealed class MiloEncounterController : MonoBehaviour
             return;
         }
 
-        encounterStarted = true;
+        if (miloPermanentlyRepaired)
+        {
+            return;
+        }
 
-        StartCoroutine(BeginEncounter());
+        BeginEncounter();
     }
 
-    private IEnumerator BeginEncounter()
+    private void BeginEncounter()
     {
+        if (encounterRunning)
+        {
+            return;
+        }
+
         if (A2NarrativeStateManager.Instance == null)
         {
             Debug.LogError(
@@ -121,124 +87,134 @@ public sealed class MiloEncounterController : MonoBehaviour
                 this
             );
 
-            yield break;
+            return;
         }
+
+        if (A2NarrativeStateManager.Instance.MiloRepaired)
+        {
+            miloPermanentlyRepaired = true;
+            return;
+        }
+
+        encounterRunning = true;
 
         if (A2NarrativeStateManager.Instance.HasEnergyCore)
         {
-            PlayVoice(miloDetectedVoice);
-
-            yield return new WaitForSeconds(
-                GetClipDuration(
-                    miloDetectedVoice,
-                    2f
-                )
-            );
-
-            if (repairInteraction != null)
-            {
-                repairInteraction.SetActive(true);
-            }
-
-            if (leaveInteraction != null)
-            {
-                leaveInteraction.SetActive(true);
-            }
-
-            yield break;
+            StartCoroutine(CoreAvailableSequence());
         }
+        else
+        {
+            StartCoroutine(NoCoreSequence());
+        }
+    }
 
-        decisionFinished = true;
+    private IEnumerator CoreAvailableSequence()
+    {
+        yield return StartCoroutine(
+            PlayVoiceAndWait(
+                detectedVoice,
+                1.5f
+            )
+        );
 
-        PlayVoice(noCoreVoice);
+        ShowChoices();
 
-        yield return new WaitForSeconds(
-            GetClipDuration(
+        encounterRunning = false;
+    }
+
+    private IEnumerator NoCoreSequence()
+    {
+        HideChoices();
+
+        // MILO stays broken and does not move.
+        OpenPath();
+
+        yield return StartCoroutine(
+            PlayVoiceAndWait(
                 noCoreVoice,
                 2f
             )
         );
 
-        A2NarrativeStateManager.Instance.SetMiloDecision(
-            false
-        );
+        encounterRunning = false;
 
-        yield return StartCoroutine(
-            MoveMiloAside()
+        Debug.Log(
+            "A2: MILO repair unavailable. " +
+            "The player may return later with the Energy Core.",
+            this
         );
-
-        FinishEncounter();
     }
 
     public void RepairMilo()
     {
-        if (decisionFinished)
+        if (encounterRunning ||
+            miloPermanentlyRepaired)
         {
             return;
         }
 
         if (A2NarrativeStateManager.Instance == null)
         {
+            Debug.LogError(
+                "A2NarrativeStateManager was not found.",
+                this
+            );
+
             return;
         }
 
         if (!A2NarrativeStateManager.Instance.HasEnergyCore)
         {
+            encounterRunning = true;
+
+            StartCoroutine(
+                NoCoreSequence()
+            );
+
             return;
         }
 
-        decisionFinished = true;
+        encounterRunning = true;
 
-        HideChoiceInteractions();
+        HideChoices();
 
-        A2NarrativeStateManager.Instance.SetMiloDecision(
-            true
+        StartCoroutine(
+            RepairSequence()
         );
-
-        StartCoroutine(RepairSequence());
     }
 
     public void LeaveMilo()
     {
-        if (decisionFinished)
+        if (encounterRunning ||
+            miloPermanentlyRepaired)
         {
             return;
         }
 
-        decisionFinished = true;
+        encounterRunning = true;
 
-        HideChoiceInteractions();
+        HideChoices();
 
-        if (A2NarrativeStateManager.Instance != null)
-        {
-            A2NarrativeStateManager.Instance.SetMiloDecision(
-                false
-            );
-        }
-
-        StartCoroutine(LeaveSequence());
+        StartCoroutine(
+            LeaveSequence()
+        );
     }
 
     private IEnumerator RepairSequence()
     {
-        PlayVoice(repairVoice);
-
-        float repairDuration =
-            GetClipDuration(
+        // Initial repair system voice.
+        yield return StartCoroutine(
+            PlayVoiceAndWait(
                 repairVoice,
-                1f
-            );
-
-        float actualRepairDelay =
-            Mathf.Min(
-                repairDelay,
-                repairDuration
-            );
-
-        yield return new WaitForSeconds(
-            actualRepairDelay
+                2f
+            )
         );
 
+        yield return new WaitForSeconds(
+            repairDelay
+        );
+
+        // Replace the broken MILO with the active version.
         if (miloBroken != null)
         {
             miloBroken.SetActive(false);
@@ -249,54 +225,54 @@ public sealed class MiloEncounterController : MonoBehaviour
             miloActive.SetActive(true);
         }
 
-        if (attentionLight != null)
+        // Record the successful repair.
+        if (A2NarrativeStateManager.Instance != null)
         {
-            attentionLight.intensity =
-                Mathf.Max(
-                    attentionLight.intensity,
-                    2f
-                );
+            A2NarrativeStateManager.Instance
+                .SetMiloDecision(true);
         }
 
-        float remainingRepairTime =
-            repairDuration - actualRepairDelay;
+        yield return new WaitForSeconds(
+            dialogueGap
+        );
 
-        if (remainingRepairTime > 0f)
-        {
-            yield return new WaitForSeconds(
-                remainingRepairTime
-            );
-        }
-
-        yield return new WaitForSeconds(dialogueGap);
-
+        // Captain notices the family photo.
         yield return StartCoroutine(
             PlayVoiceAndWait(
                 captainPhotoQuestionVoice,
-                3f
+                2f
             )
         );
 
-        yield return new WaitForSeconds(dialogueGap);
+        yield return new WaitForSeconds(
+            dialogueGap
+        );
 
+        // MILO explains its damaged memory.
         yield return StartCoroutine(
             PlayVoiceAndWait(
                 miloMemoryDamagedVoice,
-                3f
+                2f
             )
         );
 
-        yield return new WaitForSeconds(dialogueGap);
+        yield return new WaitForSeconds(
+            dialogueGap
+        );
 
+        // Captain sends MILO ahead.
         yield return StartCoroutine(
             PlayVoiceAndWait(
                 captainJunctionVoice,
-                2.5f
+                2f
             )
         );
 
-        yield return new WaitForSeconds(dialogueGap);
+        yield return new WaitForSeconds(
+            dialogueGap
+        );
 
+        // MILO accepts the instruction.
         yield return StartCoroutine(
             PlayVoiceAndWait(
                 miloDirectiveAcceptedVoice,
@@ -310,31 +286,46 @@ public sealed class MiloEncounterController : MonoBehaviour
 
         MoveMiloToNextPoint();
 
-        FinishEncounter();
+        OpenPath();
+
+        miloPermanentlyRepaired = true;
+        encounterRunning = false;
+
+        Debug.Log(
+            "A2: MILO-01 repaired and moved to the Central Junction.",
+            this
+        );
     }
 
     private IEnumerator LeaveSequence()
     {
-        PlayVoice(leaveVoice);
-
-        float waitDuration =
-            Mathf.Min(
-                GetClipDuration(
-                    leaveVoice,
-                    1f
-                ),
-                1.5f
-            );
-
-        yield return new WaitForSeconds(
-            waitDuration
-        );
-
         yield return StartCoroutine(
-            MoveMiloAside()
+            PlayVoiceAndWait(
+                leaveVoice,
+                1.5f
+            )
         );
 
-        FinishEncounter();
+        // MILO remains broken in the original position.
+        if (miloBroken != null)
+        {
+            miloBroken.SetActive(true);
+        }
+
+        if (miloActive != null)
+        {
+            miloActive.SetActive(false);
+        }
+
+        OpenPath();
+
+        encounterRunning = false;
+
+        Debug.Log(
+            "A2: Player left MILO unrepaired. " +
+            "MILO can still be repaired if the player returns later.",
+            this
+        );
     }
 
     private void MoveMiloToNextPoint()
@@ -361,106 +352,28 @@ public sealed class MiloEncounterController : MonoBehaviour
         );
     }
 
-    private IEnumerator MoveMiloAside()
+    private void OpenPath()
     {
-        if (miloBroken == null ||
-            miloSidePoint == null)
-        {
-            yield break;
-        }
-
-        Transform target =
-            miloBroken.transform;
-
-        Vector3 startPosition =
-            target.position;
-
-        Quaternion startRotation =
-            target.rotation;
-
-        Vector3 targetPosition =
-            miloSidePoint.position;
-
-        Quaternion targetRotation =
-            miloSidePoint.rotation;
-
-        float elapsedTime = 0f;
-
-        while (elapsedTime < moveAsideDuration)
-        {
-            elapsedTime += Time.deltaTime;
-
-            float progress =
-                Mathf.Clamp01(
-                    elapsedTime /
-                    moveAsideDuration
-                );
-
-            float smoothProgress =
-                Mathf.SmoothStep(
-                    0f,
-                    1f,
-                    progress
-                );
-
-            target.position =
-                Vector3.Lerp(
-                    startPosition,
-                    targetPosition,
-                    smoothProgress
-                );
-
-            target.rotation =
-                Quaternion.Slerp(
-                    startRotation,
-                    targetRotation,
-                    smoothProgress
-                );
-
-            yield return null;
-        }
-
-        target.SetPositionAndRotation(
-            targetPosition,
-            targetRotation
-        );
-
-        if (attentionLight != null)
-        {
-            attentionLight.intensity = 0f;
-        }
-    }
-
-    private IEnumerator PlayVoiceAndWait(
-        AudioClip clip,
-        float fallbackDuration)
-    {
-        PlayVoice(clip);
-
-        yield return new WaitForSeconds(
-            GetClipDuration(
-                clip,
-                fallbackDuration
-            )
-        );
-    }
-
-    private void FinishEncounter()
-    {
-        HideChoiceInteractions();
-
         if (pathBlocker != null)
         {
             pathBlocker.SetActive(false);
         }
-
-        Debug.Log(
-            "MILO-01 encounter completed.",
-            this
-        );
     }
 
-    private void HideChoiceInteractions()
+    private void ShowChoices()
+    {
+        if (repairInteraction != null)
+        {
+            repairInteraction.SetActive(true);
+        }
+
+        if (leaveInteraction != null)
+        {
+            leaveInteraction.SetActive(true);
+        }
+    }
+
+    private void HideChoices()
     {
         if (repairInteraction != null)
         {
@@ -473,30 +386,27 @@ public sealed class MiloEncounterController : MonoBehaviour
         }
     }
 
-    private void PlayVoice(AudioClip clip)
+    private IEnumerator PlayVoiceAndWait(
+        AudioClip clip,
+        float fallbackDuration)
     {
         if (voiceSource == null ||
             clip == null)
         {
-            return;
+            yield return new WaitForSeconds(
+                fallbackDuration
+            );
+
+            yield break;
         }
 
         voiceSource.Stop();
         voiceSource.clip = clip;
         voiceSource.loop = false;
         voiceSource.Play();
-    }
 
-    private float GetClipDuration(
-        AudioClip clip,
-        float fallback)
-    {
-        if (clip != null &&
-            clip.length > 0f)
-        {
-            return clip.length;
-        }
-
-        return fallback;
+        yield return new WaitForSeconds(
+            clip.length
+        );
     }
 }
